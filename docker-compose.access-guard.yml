@@ -1,0 +1,16 @@
+# Optional overlay: docker compose -f docker-compose.viewer.yml -f docker-compose.access-guard.yml up -d
+services:
+  cpamp-viewer:
+    environment:
+      ACCESS_GUARD_BASE_URL: ${ACCESS_GUARD_BASE_URL:?Set the CPA management base URL}
+      ACCESS_GUARD_MANAGEMENT_KEY_FILE: /run/secrets/access_guard_management_key
+      ACCESS_GUARD_PUBLIC_KEYS_FILE: /run/secrets/access_guard_public_keys
+    secrets:
+      - access_guard_management_key
+      - access_guard_public_keys
+
+secrets:
+  access_guard_management_key:
+    file: ${ACCESS_GUARD_MANAGEMENT_KEY_PATH:-./secrets/access_guard_management_key.txt}
+  access_guard_public_keys:
+    file: ${ACCESS_GUARD_PUBLIC_KEYS_PATH:-./secrets/access_guard_public_keys.json}

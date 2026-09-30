@@ -1,0 +1,81 @@
+.pool {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pool + .pool {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.poolTitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.observation {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.windowMeta {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  white-space: normal;
+  text-align: right;
+}
+
+.windowRow,
+.windowHeading {
+  min-width: 0;
+}
+
+.windowHeading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.windowLabel,
+.modelScope {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.modelScope {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.unknownBar {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--surface-subtle-strong),
+    var(--surface-subtle-strong) 5px,
+    var(--border-color) 5px,
+    var(--border-color) 7px
+  );
+}
+
+.stale {
+  color: var(--warning-text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .windowMeta {
+    justify-content: flex-start;
+    text-align: left;
+  }
+}

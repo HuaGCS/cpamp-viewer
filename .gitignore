@@ -1,0 +1,48 @@
+# Dependencies and generated web bundles
+**/node_modules/
+web-cpamp/dist/
+web-cpamp/dist-demo/
+server/webdist/
+coverage/
+**/*.tsbuildinfo
+
+# Local configuration, credentials, databases, and sessions
+.env
+.env.*
+!.env.example
+*.local.*
+secrets/
+**/secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite*
+*.db
+*.db-*
+*.log
+.claude/
+.codex/
+
+# Build/release output and local evidence
+release/
+reports/
+*.exe
+*.tar
+*.tar.gz
+*.zip
+*.sha256
+SHA256SUMS
+server/server
+server/cpamp-viewer
+server/healthcheck
+
+# Historical prototypes and local comparison material
+web/
+cliproxyapi+cmp原版/
+Claude Code 供应商切换器.html
+
+# Editor/OS state
+.DS_Store
+.idea/
+.vscode/

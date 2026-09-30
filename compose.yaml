@@ -1,0 +1,51 @@
+name: cpamp-viewer
+
+services:
+  cpamp-viewer:
+    image: jinshenganyuci/cpamp-viewer:${CPAMP_VIEWER_VERSION:-2.5.0}
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      HTTP_ADDR: 0.0.0.0:18417
+      CPAMP_BASE_URL: ${CPAMP_BASE_URL:-http://cpa-manager-plus:18317}
+      CPAMP_ADMIN_KEY_FILE: /run/secrets/cpamp_admin_key
+      ACCESS_GUARD_PUBLIC_ALL: ${ACCESS_GUARD_PUBLIC_ALL:-false}
+      ACCESS_GUARD_PUBLIC_KEYS: ${ACCESS_GUARD_PUBLIC_KEYS:-}
+      VIEWER_PUBLIC_ACCESS: ${VIEWER_PUBLIC_ACCESS:-true}
+      VIEWER_SESSION_SECRET_FILE: /run/secrets/viewer_session_secret
+      VIEWER_SECURE_COOKIES: ${VIEWER_SECURE_COOKIES:-false}
+      VIEWER_SESSION_TTL: ${VIEWER_SESSION_TTL:-12h}
+      VIEWER_MAX_ANALYTICS_RANGE: ${VIEWER_MAX_ANALYTICS_RANGE:-8784h}
+      VIEWER_MAX_EVENTS_PAGE: ${VIEWER_MAX_EVENTS_PAGE:-200}
+    secrets:
+      - cpamp_admin_key
+      - viewer_session_secret
+    ports:
+      - "${CPAMP_VIEWER_BIND:-127.0.0.1}:${CPAMP_VIEWER_PORT:-18417}:18417"
+    networks:
+      - cliproxy
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "/app/cpamp-viewer-healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  cliproxy:
+    external: true
+    name: ${CLIPROXY_NETWORK:-bridge}
+
+secrets:
+  cpamp_admin_key:
+    file: ${CPAMP_ADMIN_KEY_PATH:-./secrets/cpamp_admin_key.txt}
+  viewer_session_secret:
+    file: ${VIEWER_SESSION_SECRET_PATH:-./secrets/viewer_session_secret.txt}

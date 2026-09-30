@@ -1,0 +1,50 @@
+services:
+  cpamp-viewer:
+    image: jinshenganyuci/cpamp-viewer:2.5.0
+    container_name: cpamp-viewer
+    restart: unless-stopped
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      HTTP_ADDR: 0.0.0.0:18417
+      CPAMP_BASE_URL: ${CPAMP_BASE_URL}
+      CPAMP_ADMIN_KEY_FILE: /run/secrets/cpamp_admin_key
+      VIEWER_PASSWORD_FILE: /run/secrets/viewer_password
+      VIEWER_SESSION_SECRET_FILE: /run/secrets/viewer_session_secret
+      VIEWER_SECURE_COOKIES: ${VIEWER_SECURE_COOKIES:-false}
+      VIEWER_SESSION_TTL: ${VIEWER_SESSION_TTL:-12h}
+      VIEWER_MAX_ANALYTICS_RANGE: ${VIEWER_MAX_ANALYTICS_RANGE:-8784h}
+      VIEWER_MAX_EVENTS_PAGE: ${VIEWER_MAX_EVENTS_PAGE:-200}
+      # Explicit all-public example: includes current and future binding names and quotas.
+      ACCESS_GUARD_PUBLIC_ALL: "true"
+
+    ports:
+      - "${CPAMP_VIEWER_BIND:-127.0.0.1}:18417:18417"
+
+    secrets:
+      - cpamp_admin_key
+      - viewer_password
+      - viewer_session_secret
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test: ["CMD", "/app/cpamp-viewer-healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+secrets:
+  cpamp_admin_key:
+    file: ./secrets/cpamp_admin_key.txt
+  viewer_password:
+    file: ./secrets/viewer_password.txt
+  viewer_session_secret:
+    file: ./secrets/viewer_session_secret.txt

@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Frontend and Go checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      GOTOOLCHAIN: local
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.x"
+          cache: npm
+          cache-dependency-path: web-cpamp/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+          # The server currently uses only the standard library and has no go.sum.
+          cache: false
+
+      - name: Check project versions
+        run: |
+          version="$(tr -d '\r\n' < VERSION)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid VERSION file" >&2
+            exit 1
+          fi
+          export VERSION="$version"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const pkg = JSON.parse(fs.readFileSync('web-cpamp/package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('web-cpamp/package-lock.json', 'utf8'));
+          for (const version of [pkg.version, lock.version, lock.packages[''].version]) {
+            if (version !== process.env.VERSION) throw new Error('Frontend and VERSION must match');
+          }
+          JS
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        working-directory: web-cpamp
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type-check frontend
+        working-directory: web-cpamp
+        run: npm run type-check
+
+      - name: Lint frontend
+        working-directory: web-cpamp
+        run: npm run lint
+
+      - name: Test frontend
+        working-directory: web-cpamp
+        run: npm run test
+
+      - name: Build frontend for Go embedding
+        working-directory: web-cpamp
+        run: npm run build
+
+      - name: Check the public frontend bundle
+        # Keep this read-only capability gate aligned with scripts/build-release.sh.
+        run: |
+          test -s server/webdist/index.html
+          if ! grep -R -I -l -F -- "$VERSION" server/webdist >/dev/null; then
+            echo "Built Viewer bundle does not contain the project version" >&2
+            exit 1
+          fi
+          for forbidden_text in \
+            managementKey \
+            /api-call \
+            usage/import \
+            reset-credit \
+            /v0/management/model-prices \
+            /v0/management/api-key-aliases \
+            /v0/management/plugins/access-guard \
+            ACCESS_GUARD_MANAGEMENT_KEY \
+            reset-quota; do
+            if grep -R -I -l -F -- "$forbidden_text" server/webdist >/dev/null; then
+              echo "Forbidden management capability in Viewer bundle: $forbidden_text" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check Go formatting
+        working-directory: server
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Test Go
+        working-directory: server
+        run: go test -buildvcs=false -mod=readonly ./...
+
+      - name: Test Go with race detector
+        working-directory: server
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -buildvcs=false -mod=readonly ./...
+
+      - name: Vet Go
+        working-directory: server
+        run: go vet -buildvcs=false -mod=readonly ./...
+
+      - name: Build Go binaries
+        working-directory: server
+        env:
+          CGO_ENABLED: "0"
+        run: go build -buildvcs=false -mod=readonly -trimpath ./...

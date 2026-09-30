@@ -1,0 +1,81 @@
+import { describe, expect, it } from "vitest";
+import type { ViewerQuotaWindow } from "./viewerTypes";
+import {
+  formatViewerQuotaPercent,
+  formatViewerQuotaWindowLabel,
+  normalizeViewerQuotaProvider,
+  viewerQuotaRemainingPercent,
+} from "./viewerQuota";
+
+const windowFixture = (
+  overrides: Partial<ViewerQuotaWindow>,
+): ViewerQuotaWindow => ({
+  id: "window-internal",
+  label: "",
+  remaining_percent: null,
+  used_percent: null,
+  ...overrides,
+});
+
+describe("Viewer quota evidence", () => {
+  it.each([
+    null,
+    undefined,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -1,
+    101,
+    "75",
+    false,
+  ])(
+    "does not turn unknown or invalid percentage %s into zero or full quota",
+    (value) => {
+      expect(viewerQuotaRemainingPercent(value)).toBeNull();
+      expect(formatViewerQuotaPercent(value)).toBe("--");
+    },
+  );
+
+  it.each([
+    [0, "0%"],
+    [0.1, "<1%"],
+    [99.999, "99%"],
+    [100, "100%"],
+  ] as const)("retains an explicit %s percentage", (value, label) => {
+    expect(viewerQuotaRemainingPercent(value)).toBe(value);
+    expect(formatViewerQuotaPercent(value)).toBe(label);
+  });
+
+  it.each([
+    ["Muse", "meta"],
+    [" META ", "meta"],
+    ["Devin", "devin"],
+    ["x-ai", "xai"],
+    ["grok", "xai"],
+  ])("normalizes provider %s to %s", (value, expected) => {
+    expect(normalizeViewerQuotaProvider(value)).toBe(expected);
+  });
+
+  it("uses a recorded weekly kind without claiming a measured duration", () => {
+    expect(
+      formatViewerQuotaWindowLabel(windowFixture({ window_kind: "weekly" })),
+    ).toBe("周额度");
+    expect(
+      formatViewerQuotaWindowLabel(
+        windowFixture({ window_kind: "weekly", window_minutes: 11520 }),
+      ),
+    ).toBe("8 天额度");
+  });
+
+  it("keeps a supplied safe label and never presents internal IDs as a fallback", () => {
+    expect(
+      formatViewerQuotaWindowLabel(
+        windowFixture({ label: "每日额度", window_kind: "daily" }),
+      ),
+    ).toBe("每日额度");
+    expect(
+      formatViewerQuotaWindowLabel(
+        windowFixture({ id: "secret-or-private-id" }),
+      ),
+    ).toBe("额度窗口（时长未确认）");
+  });
+});

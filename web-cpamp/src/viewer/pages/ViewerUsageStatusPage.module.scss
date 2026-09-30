@@ -1,0 +1,161 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--text-primary);
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+.description,
+.note,
+.checked {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.refreshLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.card {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+.metricLabel {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.metricValue {
+  margin: 12px 0 0;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.cardTitle {
+  margin: 0 0 20px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.values {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.row dt {
+  color: var(--text-secondary);
+}
+.row dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.ready {
+  color: var(--success-color);
+  background: var(--bg-secondary);
+}
+.pending {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+.activity {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.card .note {
+  margin-top: 20px;
+}
+.warning {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.empty {
+  margin: 0;
+  padding: 48px 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.6;
+}
+.checked {
+  margin: 0;
+}
+@media (max-width: 768px) {
+  .page,
+  .metrics,
+  .grid {
+    gap: 16px;
+  }
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .card {
+    padding: 20px;
+  }
+  .title {
+    font-size: 22px;
+  }
+}
+@media (max-width: 480px) {
+  .metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .row {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .row dd {
+    margin-left: auto;
+  }
+}

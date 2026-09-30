@@ -1,0 +1,12 @@
+**
+!Dockerfile
+!LICENSE
+!web-cpamp/
+!web-cpamp/**
+!server/
+!server/**
+
+web-cpamp/node_modules
+web-cpamp/dist
+web-cpamp/dist-demo
+server/webdist
