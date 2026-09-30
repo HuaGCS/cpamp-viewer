@@ -160,7 +160,7 @@ func TestSub2APICodexSnapshotKeepsOnlyCurrentWindows(t *testing.T) {
 		"codex_7d_reset_at":            observedAt.Format(time.RFC3339),
 	}
 	var windows []quotaWindow
-	appendSub2APICodexSnapshot(&windows, extra)
+	appendSub2APICodexSnapshot(&windows, extra, "global")
 	if len(windows) != 1 || windows[0].ID != "codex_5h_snapshot" || windows[0].ResetAtMS != observedAt.Add(2*time.Hour).UnixMilli() || windows[0].Remaining != 75 {
 		t.Fatalf("expired or relative Codex windows were misread: %#v", windows)
 	}
@@ -272,5 +272,87 @@ func TestSub2APIUnnamedAccountDoesNotExposeRawID(t *testing.T) {
 	account := projectSub2APIAccount(sub2APIAccount{ID: 12345, Platform: "openai", Status: "active"}, sub2APIUsageInfo{}, false)
 	if strings.Contains(account.DisplayName, "12345") || account.ID != pseudonym("sub2api-account:12345") {
 		t.Fatalf("account identity was not projected: %#v", account)
+	}
+}
+
+func TestSub2APICodexQuotaDimensionPreservesPool(t *testing.T) {
+	for _, test := range []struct {
+		name, dimension, wantPool string
+	}{
+		{"legacy default", "", "codex_main"},
+		{"global", "global", "codex_main"},
+		{"spark shadow", "spark", "codex_spark"},
+		{"unknown dimension", "future-pool", "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Sub2API uses the same codex_5h_/codex_7d_ keys for global
+			// accounts and Spark shadows; the top-level dimension identifies the pool.
+			payload := map[string]any{
+				"id": 14, "platform": "openai", "type": "oauth", "status": "active",
+				"extra": map[string]any{
+					"codex_5h_used_percent": 25, "codex_5h_window_minutes": 300,
+					"codex_5h_reset_at":     "2099-01-01T00:00:00Z",
+					"codex_7d_used_percent": 60, "codex_7d_window_minutes": 10080,
+					"codex_7d_reset_at": "2099-01-07T00:00:00Z",
+				},
+			}
+			if test.dimension != "" {
+				payload["quota_dimension"] = test.dimension
+			}
+			if test.dimension == "spark" {
+				payload["parent_account_id"] = 7
+			}
+			encoded, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var account sub2APIAccount
+			if err := json.Unmarshal(encoded, &account); err != nil {
+				t.Fatal(err)
+			}
+			got := projectSub2APIAccount(account, sub2APIUsageInfo{}, false)
+			if len(got.Windows) != 2 {
+				t.Fatalf("expected both saved windows, got %#v", got.Windows)
+			}
+			for _, window := range got.Windows {
+				if window.Pool != test.wantPool {
+					t.Errorf("%s pool = %q, want %q", window.ID, window.Pool, test.wantPool)
+				}
+			}
+			if got.Windows[0].Remaining != 75 || got.Windows[1].Remaining != 40 {
+				t.Fatalf("pool selection changed quota values: %#v", got.Windows)
+			}
+		})
+	}
+}
+
+func TestSub2APIPassiveUsageDoesNotInventUnobservedFullQuota(t *testing.T) {
+	for _, test := range []struct {
+		name, payload string
+		wantWindows   int
+	}{
+		{
+			"no sample", `{"source":"passive","five_hour":{"utilization":0,"resets_at":null,"remaining_seconds":0}}`, 0,
+		},
+		{
+			"observed zero", `{"source":"passive","updated_at":"2026-09-30T00:00:00Z","five_hour":{"utilization":0,"resets_at":null,"remaining_seconds":0}}`, 1,
+		},
+		{
+			"known window", `{"source":"passive","five_hour":{"utilization":0,"resets_at":"2099-01-01T00:00:00Z","remaining_seconds":60}}`, 1,
+		},
+		{
+			"known usage", `{"source":"passive","five_hour":{"utilization":25,"resets_at":null,"remaining_seconds":0}}`, 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var usage sub2APIUsageInfo
+			if err := json.Unmarshal([]byte(test.payload), &usage); err != nil {
+				t.Fatal(err)
+			}
+			account := projectSub2APIAccount(sub2APIAccount{ID: 21, Platform: "anthropic", Type: "oauth", Status: "active"}, usage, false)
+			if len(account.Windows) != test.wantWindows {
+				t.Fatalf("projected %d windows, want %d: %#v", len(account.Windows), test.wantWindows, account.Windows)
+			}
+		})
 	}
 }

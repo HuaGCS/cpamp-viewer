@@ -34,6 +34,7 @@ type sub2APIAccount struct {
 	Name             string         `json:"name"`
 	Platform         string         `json:"platform"`
 	Type             string         `json:"type"`
+	QuotaDimension   string         `json:"quota_dimension"`
 	Status           string         `json:"status"`
 	ErrorMessage     string         `json:"error_message"`
 	UpdatedAt        string         `json:"updated_at"`
@@ -241,7 +242,16 @@ func projectSub2APIAccount(account sub2APIAccount, usage sub2APIUsageInfo, usage
 	updatedAt := parseSub2APITime(usage.UpdatedAt)
 	accountUpdatedAt := parseSub2APITime(account.UpdatedAt)
 	windows := make([]quotaWindow, 0, 8)
-	appendSub2APIProgress(&windows, "five_hour", "5 小时额度", "five_hour", "", usage.FiveHour, updatedAt)
+	fiveHour := usage.FiveHour
+	// Sub2API emits an all-zero placeholder when no passive 5H sample exists.
+	// Without a sample time, reset or actual usage, it does not prove full quota.
+	if usage.Source == "passive" && updatedAt == 0 && fiveHour != nil &&
+		fiveHour.Utilization != nil && *fiveHour.Utilization == 0 &&
+		parseSub2APITime(fiveHour.ResetsAt) == 0 &&
+		(fiveHour.RemainingSeconds == nil || *fiveHour.RemainingSeconds == 0) {
+		fiveHour = nil
+	}
+	appendSub2APIProgress(&windows, "five_hour", "5 小时额度", "five_hour", "", fiveHour, updatedAt)
 	appendSub2APIProgress(&windows, "seven_day", "7 天额度", "weekly", "", usage.SevenDay, updatedAt)
 	appendSub2APIProgress(&windows, "seven_day_sonnet", "7 天额度", "weekly", "Sonnet", usage.SevenDaySonnet, updatedAt)
 	appendSub2APIProgress(&windows, "seven_day_fable", "7 天额度", "weekly", "Fable", usage.SevenDayFable, updatedAt)
@@ -256,7 +266,7 @@ func projectSub2APIAccount(account sub2APIAccount, usage sub2APIUsageInfo, usage
 	appendSub2APIGrokWindow(&windows, "grok_request", "请求额度", usage.GrokRequestQuota, updatedAt)
 	appendSub2APIGrokWindow(&windows, "grok_token", "Token 额度", usage.GrokTokenQuota, updatedAt)
 	if strings.EqualFold(account.Platform, "openai") {
-		appendSub2APICodexSnapshot(&windows, account.Extra)
+		appendSub2APICodexSnapshot(&windows, account.Extra, account.QuotaDimension)
 	}
 	appendSub2APIConfiguredQuota(&windows, "quota", "总额度", account.QuotaLimit, account.QuotaUsed, "", accountUpdatedAt)
 	appendSub2APIConfiguredQuota(&windows, "quota_daily", "日额度", account.QuotaDailyLimit, account.QuotaDailyUsed, account.QuotaDailyReset, accountUpdatedAt)
@@ -283,16 +293,24 @@ func projectSub2APIAccount(account sub2APIAccount, usage sub2APIUsageInfo, usage
 	}
 }
 
-func appendSub2APICodexSnapshot(windows *[]quotaWindow, extra map[string]any) {
+func appendSub2APICodexSnapshot(windows *[]quotaWindow, extra map[string]any, dimension string) {
 	if len(extra) == 0 {
 		return
 	}
 	observedAt := quotaTimestampMS(extra["codex_usage_updated_at"])
-	appendSub2APICodexWindow(windows, extra, "5h", "5 小时额度", "five_hour", observedAt)
-	appendSub2APICodexWindow(windows, extra, "7d", "7 天额度", "weekly", observedAt)
+	pool := "unknown"
+	switch strings.ToLower(strings.TrimSpace(dimension)) {
+	case "", "global":
+		// Sub2API treats an omitted dimension as global for legacy accounts.
+		pool = "codex_main"
+	case "spark":
+		pool = "codex_spark"
+	}
+	appendSub2APICodexWindow(windows, extra, "5h", "5 小时额度", "five_hour", pool, observedAt)
+	appendSub2APICodexWindow(windows, extra, "7d", "7 天额度", "weekly", pool, observedAt)
 }
 
-func appendSub2APICodexWindow(windows *[]quotaWindow, extra map[string]any, slot, label, kind string, observedAt int64) {
+func appendSub2APICodexWindow(windows *[]quotaWindow, extra map[string]any, slot, label, kind, pool string, observedAt int64) {
 	prefix := "codex_" + slot + "_"
 	minutes, validMinutes := quotaNumber(extra[prefix+"window_minutes"])
 	if !validMinutes || minutes <= 0 {
@@ -314,7 +332,7 @@ func appendSub2APICodexWindow(windows *[]quotaWindow, extra map[string]any, slot
 	}
 	*windows = append(*windows, quotaWindow{
 		ID:               prefix + "snapshot",
-		Pool:             "codex_main",
+		Pool:             pool,
 		Label:            label,
 		Used:             clamp(used),
 		Remaining:        clamp(100 - used),
