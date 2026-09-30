@@ -30,13 +30,11 @@ func TestSub2APIQuotaProjectsPassiveUsageWithoutSecrets(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/admin/accounts":
-			_, _ = io.WriteString(w, `{"code":0,"data":{"items":[{"id":10,"name":"Alpha","platform":"openai","type":"oauth","status":"active","updated_at":"2026-09-30T00:00:00Z","extra":{"plan_type":"Plus","access_token":"secret-must-not-leak"}},{"id":11,"name":"Beta","platform":"anthropic","type":"api-key","status":"error","error_message":"Bearer secret-must-not-leak","updated_at":"2026-09-30T00:00:00Z","quota_limit":100,"quota_used":25}],"total":2,"page":1,"page_size":200,"pages":1}}`)
-		case "/api/v1/admin/accounts/10/usage":
+			_, _ = io.WriteString(w, `{"code":0,"data":{"items":[{"id":10,"name":"Alpha","platform":"openai","type":"oauth","status":"active","updated_at":"2026-09-30T00:00:00Z","extra":{"plan_type":"Plus","access_token":"secret-must-not-leak","codex_usage_updated_at":"2026-09-30T01:00:00Z","codex_5h_used_percent":25,"codex_5h_window_minutes":300,"codex_5h_reset_at":"2099-01-01T00:00:00Z","codex_7d_window_minutes":10080,"codex_7d_reset_at":"2099-01-07T00:00:00Z"}},{"id":11,"name":"Beta","platform":"anthropic","type":"oauth","status":"error","error_message":"Bearer secret-must-not-leak","updated_at":"2026-09-30T00:00:00Z","quota_limit":100,"quota_used":25}],"total":2,"page":1,"page_size":200,"pages":1}}`)
+		case "/api/v1/admin/accounts/11/usage":
 			if r.URL.Query().Get("source") != "passive" {
 				t.Errorf("usage query is not passive: %s", r.URL.RawQuery)
 			}
-			_, _ = io.WriteString(w, `{"code":0,"data":{"source":"passive","updated_at":"2026-09-30T01:00:00Z","five_hour":{"utilization":25,"resets_at":"2026-09-30T05:00:00Z"},"seven_day":{"resets_at":"2026-10-07T00:00:00Z"},"subscription_tier":"Plus","error":"Bearer secret-must-not-leak"}}`)
-		case "/api/v1/admin/accounts/11/usage":
 			_, _ = io.WriteString(w, `{"code":0,"data":{"source":"passive","updated_at":null,"five_hour":null}}`)
 		default:
 			t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
@@ -88,7 +86,7 @@ func TestSub2APIQuotaProjectsPassiveUsageWithoutSecrets(t *testing.T) {
 			claude = account
 		}
 	}
-	if codex.ID != pseudonym("sub2api-account:10") || codex.Source != "sub2api" || codex.Plan != "Plus" || len(codex.Windows) != 2 || codex.Windows[0].Used != 25 || !strings.Contains(response.Body.String(), `"remaining_percent":null`) {
+	if codex.ID != pseudonym("sub2api-account:10") || codex.Source != "sub2api" || codex.Plan != "Plus" || len(codex.Windows) != 2 || codex.Windows[0].Used != 25 || codex.Windows[0].Pool != "codex_main" || !strings.Contains(response.Body.String(), `"remaining_percent":null`) {
 		t.Fatalf("unexpected Codex projection: %#v", codex)
 	}
 	if claude.ID != pseudonym("sub2api-account:11") || !claude.Disabled || len(claude.Windows) != 1 || claude.Windows[0].Remaining != 75 {
@@ -97,13 +95,74 @@ func TestSub2APIQuotaProjectsPassiveUsageWithoutSecrets(t *testing.T) {
 	if cpampAccount.Provider != "meta" || cpampAccount.DisplayName != "same@example.test" {
 		t.Fatalf("CPAMP account was not preserved: %#v", cpampAccount)
 	}
-	if len(requests) != 3 {
-		t.Fatalf("expected one list and two passive GETs, got %v", requests)
+	if len(requests) != 2 {
+		t.Fatalf("expected one list and one Anthropic passive GET, got %v", requests)
 	}
 	for _, request := range requests {
 		if !strings.HasPrefix(request, "GET ") || strings.Contains(request, "/batch") {
 			t.Fatalf("unexpected upstream method: %s", request)
 		}
+	}
+}
+
+func TestSub2APIOpenAIUsesSavedQuotaWithoutUnsupportedPassiveRequest(t *testing.T) {
+	var usageRequested bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/admin/accounts" {
+			usageRequested = true
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = io.WriteString(w, `{"code":0,"data":{"items":[{"id":4,"name":"OpenAI Account","platform":"openai","type":"oauth","status":"active","extra":{"codex_usage_updated_at":"2026-09-30T01:00:00Z","codex_5h_used_percent":0,"codex_5h_window_minutes":0,"codex_5h_reset_at":"2026-09-30T01:00:00Z","codex_7d_used_percent":18,"codex_7d_window_minutes":10080,"codex_7d_reset_at":"2099-01-07T00:00:00Z","access_token":"secret-must-not-leak"}}],"total":1,"pages":1}}`)
+	}))
+	defer upstream.Close()
+	server := &Server{sub2api: sub2api.New(upstream.URL, "private-sub2api-key", "", time.Second, 1<<20)}
+	accounts, err := server.loadSub2APIQuota(context.Background())
+	if err != nil || len(accounts) != 1 || usageRequested {
+		t.Fatalf("OpenAI snapshot result = %#v, %v, usage requested = %t", accounts, err, usageRequested)
+	}
+	if len(accounts[0].Windows) != 1 || accounts[0].Windows[0].WindowMins != 10080 || accounts[0].Windows[0].Used != 18 || accounts[0].StatusMessage != "" {
+		t.Fatalf("unsupported passive usage broke saved Codex quota: %#v", accounts[0])
+	}
+	encoded, err := json.Marshal(accounts)
+	if err != nil || strings.Contains(string(encoded), "secret-must-not-leak") {
+		t.Fatalf("saved quota leaked account credentials: %v", err)
+	}
+}
+
+func TestSub2APIPassiveUsageRequiresAnthropicSubscription(t *testing.T) {
+	for _, test := range []struct {
+		platform, accountType string
+		want                  bool
+	}{
+		{"anthropic", "oauth", true},
+		{"anthropic", "setup-token", true},
+		{"anthropic", "api-key", false},
+		{"openai", "oauth", false},
+		{"gemini", "oauth", false},
+	} {
+		account := sub2APIAccount{Platform: test.platform, Type: test.accountType}
+		if got := supportsSub2APIPassiveUsage(account); got != test.want {
+			t.Fatalf("passive support for %s/%s = %t, want %t", test.platform, test.accountType, got, test.want)
+		}
+	}
+}
+
+func TestSub2APICodexSnapshotKeepsOnlyCurrentWindows(t *testing.T) {
+	observedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	extra := map[string]any{
+		"codex_usage_updated_at":       observedAt.Format(time.RFC3339),
+		"codex_5h_used_percent":        float64(25),
+		"codex_5h_window_minutes":      float64(300),
+		"codex_5h_reset_after_seconds": float64(7200),
+		"codex_7d_used_percent":        float64(80),
+		"codex_7d_window_minutes":      float64(10080),
+		"codex_7d_reset_at":            observedAt.Format(time.RFC3339),
+	}
+	var windows []quotaWindow
+	appendSub2APICodexSnapshot(&windows, extra)
+	if len(windows) != 1 || windows[0].ID != "codex_5h_snapshot" || windows[0].ResetAtMS != observedAt.Add(2*time.Hour).UnixMilli() || windows[0].Remaining != 75 {
+		t.Fatalf("expired or relative Codex windows were misread: %#v", windows)
 	}
 }
 
@@ -161,7 +220,7 @@ func TestCombinedQuotaKeepsSub2APIWhenCPAMPUnavailable(t *testing.T) {
 	sub2APIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/admin/accounts":
-			_, _ = io.WriteString(w, `{"code":0,"data":{"items":[{"id":4,"name":"Sub account","platform":"anthropic","status":"active"}],"total":1,"pages":1}}`)
+			_, _ = io.WriteString(w, `{"code":0,"data":{"items":[{"id":4,"name":"Sub account","platform":"anthropic","type":"oauth","status":"active"}],"total":1,"pages":1}}`)
 		case "/api/v1/admin/accounts/4/usage":
 			_, _ = io.WriteString(w, `{"code":0,"data":{"updated_at":"2026-09-30T01:00:00Z","five_hour":{"utilization":50}}}`)
 		default:

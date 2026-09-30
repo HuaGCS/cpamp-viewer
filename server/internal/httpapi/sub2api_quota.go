@@ -186,6 +186,9 @@ func (s *Server) fetchSub2APIUsage(ctx context.Context, accounts []sub2APIAccoun
 	}
 enqueue:
 	for _, account := range accounts {
+		if !supportsSub2APIPassiveUsage(account) {
+			continue
+		}
 		select {
 		case jobs <- account:
 		case <-workCtx.Done():
@@ -201,6 +204,13 @@ enqueue:
 		return nil, nil, err
 	}
 	return usage, usageErrors, nil
+}
+
+func supportsSub2APIPassiveUsage(account sub2APIAccount) bool {
+	if !strings.EqualFold(account.Platform, "anthropic") {
+		return false
+	}
+	return account.Type == "oauth" || account.Type == "setup-token"
 }
 
 func projectSub2APIAccount(account sub2APIAccount, usage sub2APIUsageInfo, usageError bool) quotaAccount {
@@ -245,6 +255,9 @@ func projectSub2APIAccount(account sub2APIAccount, usage sub2APIUsageInfo, usage
 	appendSub2APIModelWindows(&windows, usage.AntigravityQuota, updatedAt)
 	appendSub2APIGrokWindow(&windows, "grok_request", "请求额度", usage.GrokRequestQuota, updatedAt)
 	appendSub2APIGrokWindow(&windows, "grok_token", "Token 额度", usage.GrokTokenQuota, updatedAt)
+	if strings.EqualFold(account.Platform, "openai") {
+		appendSub2APICodexSnapshot(&windows, account.Extra)
+	}
 	appendSub2APIConfiguredQuota(&windows, "quota", "总额度", account.QuotaLimit, account.QuotaUsed, "", accountUpdatedAt)
 	appendSub2APIConfiguredQuota(&windows, "quota_daily", "日额度", account.QuotaDailyLimit, account.QuotaDailyUsed, account.QuotaDailyReset, accountUpdatedAt)
 	appendSub2APIConfiguredQuota(&windows, "quota_weekly", "周额度", account.QuotaWeeklyLimit, account.QuotaWeeklyUsed, account.QuotaWeeklyReset, accountUpdatedAt)
@@ -266,8 +279,52 @@ func projectSub2APIAccount(account sub2APIAccount, usage sub2APIUsageInfo, usage
 		StatusMessage: statusMessage,
 		Disabled:      status != "active",
 		Windows:       windows,
-		UpdatedAtMS:   max(updatedAt, accountUpdatedAt),
+		UpdatedAtMS:   max(updatedAt, accountUpdatedAt, parseSub2APITime(stringValue(account.Extra["codex_usage_updated_at"]))),
 	}
+}
+
+func appendSub2APICodexSnapshot(windows *[]quotaWindow, extra map[string]any) {
+	if len(extra) == 0 {
+		return
+	}
+	observedAt := quotaTimestampMS(extra["codex_usage_updated_at"])
+	appendSub2APICodexWindow(windows, extra, "5h", "5 小时额度", "five_hour", observedAt)
+	appendSub2APICodexWindow(windows, extra, "7d", "7 天额度", "weekly", observedAt)
+}
+
+func appendSub2APICodexWindow(windows *[]quotaWindow, extra map[string]any, slot, label, kind string, observedAt int64) {
+	prefix := "codex_" + slot + "_"
+	minutes, validMinutes := quotaNumber(extra[prefix+"window_minutes"])
+	if !validMinutes || minutes <= 0 {
+		return
+	}
+	resetAt := quotaTimestampMS(extra[prefix+"reset_at"])
+	if resetAt == 0 && observedAt > 0 {
+		if seconds, valid := quotaNumber(extra[prefix+"reset_after_seconds"]); valid && seconds > 0 {
+			resetAt = quotaRelativeReset(observedAt, seconds)
+		}
+	}
+	if resetAt > 0 && resetAt <= time.Now().UnixMilli() {
+		return
+	}
+	used, validUsed := quotaNumber(extra[prefix+"used_percent"])
+	validUsed = validUsed && used >= 0
+	if !validUsed && resetAt == 0 {
+		return
+	}
+	*windows = append(*windows, quotaWindow{
+		ID:               prefix + "snapshot",
+		Pool:             "codex_main",
+		Label:            label,
+		Used:             clamp(used),
+		Remaining:        clamp(100 - used),
+		ResetAtMS:        resetAt,
+		WindowMins:       minutes,
+		ObservedAt:       observedAt,
+		WindowKind:       kind,
+		UnknownUsed:      !validUsed,
+		UnknownRemaining: !validUsed,
+	})
 }
 
 func canonicalSub2APIProvider(value, accountType string) string {

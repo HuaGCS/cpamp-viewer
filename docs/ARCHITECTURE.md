@@ -48,7 +48,7 @@ Viewer 本身没有业务数据库。会话有效性登记和各类查询缓存�
 flowchart LR
     Browser[浏览器：Viewer 页面] -->|同源 /viewer/api/v1| API[Go：会话与请求校验]
     API -->|服务端确定路径与凭据| CPAMP[CPAMP 管理读取接口]
-    API -->|可选：账号列表与被动用量 GET| Sub2API[Sub2API 管理读取接口]
+    API -->|可选：账号列表与 Anthropic 被动用量 GET| Sub2API[Sub2API 管理读取接口]
     CPAMP --> CPA[CPA / Provider]
     CPAMP --> Projection[字段白名单与身份替换]
     Sub2API --> Projection
@@ -124,7 +124,7 @@ flowchart LR
 
 ### Sub2API 被动额度
 
-`sub2api_quota.go` 读取分页 `/api/v1/admin/accounts`，再以最多 8 个并发 GET 请求固定的 `/api/v1/admin/accounts/:id/usage?source=passive`；不使用可能触发主动探测的批量接口。仅把名称、平台、套餐、状态及可确认的额度窗口投影到现有 DTO；原始凭据、账号 ID 和上游错误正文不公开。缺失使用率保持 `null`，最多处理 2000 个账号，超出时该来源整体标记不可用而非静默截断。两套管理员密钥分别配置，不互相复用。
+`sub2api_quota.go` 读取分页 `/api/v1/admin/accounts`。仅对 Anthropic OAuth/Setup Token 账号以最多 8 个并发 GET 请求固定的 `/api/v1/admin/accounts/:id/usage?source=passive`；OpenAI Codex 则从账号列表 `extra` 中投影已有的 5H/7D 用量、时长和重置时间，丢弃空时长与已过期窗口。其他账号只显示明确配置的额度，不请求不受支持的被动接口，也不使用可能触发主动探测的批量接口。仅把名称、平台、套餐、状态及可确认的额度窗口投影到现有 DTO；原始凭据、账号 ID 和上游错误正文不公开。缺失使用率保持 `null`，最多处理 2000 个账号，超出时该来源整体标记不可用而非静默截断。两套管理员密钥分别配置，不互相复用。
 
 ### Codex 完整额度
 
