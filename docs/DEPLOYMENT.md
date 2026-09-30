@@ -227,7 +227,7 @@ VIEWER_SECURE_COOKIES=true
 
 从 2.1.0 / 2.2.0 / 2.3.0 升级时，原有页面不需要修改数据库或密钥；启用 Key 额度页只需上文的公开范围设置。在线镜像名为 `jinshenganyuci/cpamp-viewer:2.5.0`；离线包保留本地标签 `cpamp-viewer:2.5.0`。
 
-使用离线包时，先执行下文的 `docker load`，再把 `.env` 中的 `CPAMP_VIEWER_VERSION` 改为 `2.5.0` 并运行 `docker compose up -d --no-build`。Viewer 自身不保存请求历史，因此容器重建不会丢失运行期间的数据；历史仍来自现有 CPAMP。
+使用离线包时，先执行下文的 `docker load`，再把 `.env` 中的 `CPAMP_VIEWER_VERSION` 改为 `2.5.0` 并运行 `docker compose -f docker-compose.viewer.yml up -d --no-build`。Viewer 自身不保存请求历史，因此容器重建不会丢失运行期间的数据；历史仍来自现有 CPAMP。
 
 从源码构建：
 
@@ -302,7 +302,7 @@ docker compose -f docker-compose.acceptance.yml down
 .\start-remote-test.ps1 -Upstream 'http://其他地址:18317' -Port 18418 -BindAddress '0.0.0.0'
 ```
 
-Docker Desktop 双击脚本位于 `cpamp-viewer_2.5.0_deployment` 包。原生 Windows 程序位于 `cpamp-viewer_2.5.0_windows_amd64.tar.gz`；先校验它的同名 `.sha256`，解压后再校验包内 `SHA256SUMS`。项目根目录的 `cpamp-viewer_2.5.0_windows_amd64.sha256` 只覆盖为兼容保留的四个松散 EXE。
+Docker Desktop 双击脚本位于 `cpamp-viewer_2.5.0_deployment` 包。原生 Windows 程序位于 `cpamp-viewer_2.5.0_windows_amd64.tar.gz`；先校验它的同名 `.sha256`，解压后再校验包内 `SHA256SUMS`。GitHub Release 以各归档旁的 `.tar.gz.sha256` 和总 `SHA256SUMS` 校验下载文件；解压后用包内 `SHA256SUMS` 校验内容。
 
 原生 Windows EXE 与 Docker Desktop 离线镜像是两种独立运行方式：
 
@@ -387,7 +387,7 @@ go build .
 - 独立 Linux `amd64` 离线镜像及校验文件。
 - 原生 Windows `amd64` 目录、标准化归档、包内 `SHA256SUMS` 和外层归档校验。
 - 只通过 allowlist 收集的 Docker 部署目录、标准化归档和双层 SHA-256。
-- 总 `SHA256SUMS`，覆盖三个对外归档和 Windows 完整文件清单。
+- GitHub Release 的总 `SHA256SUMS` 覆盖三个下载归档和各自校验文件；源码构建另保留 Windows 文件清单用于本地分发。
 
 默认 `SOURCE_DATE_EPOCH=0` 会固定 BuildKit 和外层 tar 时间戳；可以显式设置另一个固定值，但同一版本的重复构建必须使用相同值。不要直接压缩整个项目目录，因为本地测试目录可能含真实环境配置和对话记录。
 
