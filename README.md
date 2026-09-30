@@ -135,7 +135,7 @@ docker compose logs --tail 100 cpamp-viewer  # 查看日志
 docker compose down                        # 停止本项目 Viewer
 ```
 
-Viewer 不保存 CPAMP 请求历史；重建 Viewer 不会清除 CPAMP 数据。`down` 不会删除声明为 external 的 CPAMP 网络。
+Viewer 不保存 CPAMP 请求历史；重建 Viewer 不会清除 CPAMP 数据。本项目通过 `network_mode` 加入指定网络，`down` 不会创建或删除 CPAMP 网络。
 
 ## 常用配置
 

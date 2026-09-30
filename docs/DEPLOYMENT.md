@@ -215,7 +215,7 @@ CPAMP_BASE_URL=http://192.0.2.10:18317
 CLIPROXY_NETWORK=bridge
 ```
 
-这里使用 Docker 自带的 `bridge` 网络即可访问同一局域网内的 CPAMP；只有与 CPAMP 同属一套 Compose 部署时，才需要填写它所在的专用 Docker 网络。
+Compose 使用 `network_mode` 加入 Docker 网络。这里使用 Docker 自带的 `bridge` 网络即可访问同一局域网内的 CPAMP；只有与 CPAMP 同属一套 Compose 部署时，才需要填写它所在的专用 Docker 网络。
 
 公开模式不使用登录 Cookie，因此 `VIEWER_SECURE_COOKIES` 不影响访问。只有显式改为 `VIEWER_PUBLIC_ACCESS=false`、重新启用密码登录时，HTTPS 域名才需要设置：
 

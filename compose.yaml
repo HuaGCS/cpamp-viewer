@@ -23,8 +23,7 @@ services:
       - viewer_session_secret
     ports:
       - "${CPAMP_VIEWER_BIND:-127.0.0.1}:${CPAMP_VIEWER_PORT:-18417}:18417"
-    networks:
-      - cliproxy
+    network_mode: ${CLIPROXY_NETWORK:-bridge}
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -38,11 +37,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-
-networks:
-  cliproxy:
-    external: true
-    name: ${CLIPROXY_NETWORK:-bridge}
 
 secrets:
   cpamp_admin_key:

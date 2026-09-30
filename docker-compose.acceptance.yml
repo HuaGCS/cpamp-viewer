@@ -25,8 +25,7 @@ services:
       VIEWER_MAX_EVENTS_PAGE: ${VIEWER_MAX_EVENTS_PAGE:-200}
     ports:
       - "${CPAMP_VIEWER_V2_BIND:-0.0.0.0}:${CPAMP_VIEWER_V2_PORT:-18418}:18417"
-    networks:
-      - cliproxy
+    network_mode: ${CLIPROXY_NETWORK:-bridge}
     secrets:
       - cpamp_admin_key
       - viewer_session_secret
@@ -43,11 +42,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
-
-networks:
-  cliproxy:
-    external: true
-    name: ${CLIPROXY_NETWORK:-cliproxyapicmp_cliproxy}
 
 secrets:
   cpamp_admin_key:
